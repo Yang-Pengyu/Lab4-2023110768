@@ -3,7 +3,7 @@ name: CI Test and Auto PR
 # 定义触发事件：当向 dev 分支推送代码时触发此工作流
 on:
   push:
-    branches: [ dev ]
+    branches: [ main ]  
 
 jobs:
   run_tests_and_create_pr:
