@@ -20,3 +20,37 @@ jobs:
             ${{ runner.os }}-m2- 
       - name: Run tests with Maven 
         run: mvn -B test --file pom.xml 
+name: CI Test and Auto PR
+
+on:
+  push:
+    branches: [ dev ] # 仅当推送到 dev 分支时触发
+
+jobs:
+  test-and-pr:
+    runs-on: ubuntu-latest
+    steps:
+      # 已有的步骤：检出代码、设置JDK、运行测试
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Run tests with Maven
+        run: mvn -B test
+
+      # ▼▼▼ 新增的步骤：自动创建 PR ▼▼▼
+      - name: Create Pull Request
+        # 只有上面的测试步骤全部成功，才会运行这一步
+        if: success()
+        env:
+          # 使用 GitHub 自动生成的令牌，拥有操作仓库的权限
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "尝试从 dev 分支向 main 分支创建 Pull Request..."
+          gh pr create \
+            --title "[Bot] 自动合并: 将 dev 的更新合并到 main" \
+            --body "此 PR 由 GitHub Actions 在工作流测试通过后自动创建。\n\n- ✅ 所有测试已通过。" \
+            --base main \
+            --head dev \
+            --repo ${{ github.repository }} || echo "PR可能已存在或无新变更，跳过。"
