@@ -1,22 +1,63 @@
-name: tests 
-on: push 
-jobs: 
-  run_tests: 
-    runs-on: ubuntu-latest 
-    steps: 
-      - name: Checkout the repository 
-        uses: actions/checkout@v4 
-      - name: Set up JDK 17 
-        uses: actions/setup-java@v4 
-        with: 
-          java-version: '17' 
-          distribution: 'temurin' 
-      - name: Cache Maven packages 
-        uses: actions/cache@v4 
-        with: 
-          path: ~/.m2/repository 
-          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }} 
-          restore-keys: | 
-            ${{ runner.os }}-m2- 
-      - name: Run tests with Maven 
-        run: mvn -B test --file pom.xml 
+name: CI Test and Auto PR
+
+# 定义触发事件：当向 dev 分支推送代码时触发此工作流
+on:
+  push:
+    branches: [ dev ]
+
+jobs:
+  run_tests_and_create_pr:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. 检出代码
+      - name: Checkout the repository
+        uses: actions/checkout@v4
+        with:
+          # 以完整历史记录检出，这对后续操作更可靠
+          fetch-depth: 0
+
+      # 2. 设置 Java 环境
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # 3. 缓存 Maven 依赖以加速后续构建
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-m2-
+
+      # 4. 运行 Maven 测试（核心质量门禁）
+      - name: Run tests with Maven
+        run: mvn -B test --file pom.xml
+
+      # 5. 【新增】自动创建 Pull Request
+      - name: Create Pull Request
+        # 关键：只有上一步“Run tests with Maven”成功，才会执行此步骤
+        if: success()
+        env:
+          # 使用GitHub Actions内置令牌，无需自行配置
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "检查 dev 与 main 分支之间的差异..."
+          # 检查是否有实际需要合并的变更，避免创建无意义的PR
+          if git diff --quiet origin/main origin/dev; then
+            echo "没有检测到有效代码变更，跳过PR创建。"
+            exit 0
+          fi
+
+          echo "正在从 dev 分支向 main 分支创建 Pull Request..."
+          # 使用 GitHub CLI 创建 PR
+          gh pr create \
+            --title "[Automated] 合并 dev 分支的更新到 main" \
+            --body "此 PR 由 GitHub Actions 工作流自动创建，原因：**dev 分支的测试已全部通过**。\n\n- **来源**：dev 分支的最新提交\n- **目标**：main 分支\n- **状态**：✅ 所有自动化测试通过\n\n请进行代码审查后合并。" \
+            --base main \
+            --head dev \
+            --repo "${{ github.repository }}"
+
+          echo "✅ PR 创建指令已执行完成。"
